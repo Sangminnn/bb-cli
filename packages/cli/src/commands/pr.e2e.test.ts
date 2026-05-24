@@ -31,15 +31,19 @@ test('bb pr review pipes fetched PR diff into bundled review UI entrypoint', asy
   const server = await startMockBitbucketServer();
   const tempDir = await mkdtemp(join(tmpdir(), 'bb-review-ui-test-'));
   const capturedDiffPath = join(tempDir, 'captured.diff');
+  const capturedMetadataPath = join(tempDir, 'captured-metadata.json');
   const fakeReviewUiPath = join(tempDir, 'fake-review-ui.mjs');
 
   await writeFile(fakeReviewUiPath, `
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
 process.stdin.on('end', () => {
   writeFileSync(${JSON.stringify(capturedDiffPath)}, input);
+  if (process.env.BB_REVIEW_METADATA_PATH) {
+    writeFileSync(${JSON.stringify(capturedMetadataPath)}, readFileSync(process.env.BB_REVIEW_METADATA_PATH, 'utf8'));
+  }
 });
 `);
 
@@ -50,6 +54,14 @@ process.stdin.on('end', () => {
     });
     assert.equal(result.code, 0, result.stderr);
     assert.equal(await readFile(capturedDiffPath, 'utf8'), SAMPLE_DIFF);
+    const metadata = JSON.parse(await readFile(capturedMetadataPath, 'utf8'));
+    assert.equal(metadata.title, 'Fix auth fallback');
+    assert.equal(metadata.description, 'Prevent profile crash when email is missing.');
+    assert.equal(metadata.sourceBranch, 'fix/auth-fallback');
+    assert.equal(metadata.destinationBranch, 'main');
+    assert.deepEqual(metadata.changedFiles, [
+      { path: 'a.txt', status: 'modified', additions: 1, deletions: 0 },
+    ]);
   } finally {
     await server.close();
     await rm(tempDir, { recursive: true, force: true });
@@ -72,6 +84,31 @@ async function startMockBitbucketServer(): Promise<{
     if (req.url === '/2.0/repositories/workspace/repo/pullrequests/1/diff') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end(SAMPLE_DIFF);
+      return;
+    }
+
+    if (req.url === '/2.0/repositories/workspace/repo/pullrequests/1') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        id: 1,
+        title: 'Fix auth fallback',
+        description: 'Prevent profile crash when email is missing.',
+        state: 'OPEN',
+        source: { branch: { name: 'fix/auth-fallback' } },
+        destination: { branch: { name: 'main' } },
+        author: { display_name: 'Sangmin' },
+        links: { html: { href: 'https://bitbucket.org/workspace/repo/pull-requests/1' } },
+      }));
+      return;
+    }
+
+    if (req.url === '/2.0/repositories/workspace/repo/pullrequests/1/diffstat?pagelen=100') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        values: [
+          { status: 'modified', old: null, new: { path: 'a.txt' }, lines_added: 1, lines_removed: 0 },
+        ],
+      }));
       return;
     }
 

@@ -160,9 +160,12 @@ bb pr review 123 --repo workspace/repo
 Flow:
 
 1. Fetch the Bitbucket Cloud PR diff.
-2. Pipe the unified diff into the bundled review UI.
-3. Open a browser-based diff review workspace.
-4. Keep the agent orchestrator disabled by default.
+2. Fetch lightweight PR metadata: title, description, branch info, author, URL, and changed files summary.
+3. Pipe the unified diff into the bundled review UI.
+4. Open a browser-based diff review workspace.
+5. Keep the agent orchestrator disabled by default.
+
+When agent mode is enabled, the review UI prompt includes this PR metadata as `Pull Request Context` in addition to the commented file, selected line/range, nearby code, and thread history.
 
 Enable agent-assisted discussion explicitly:
 

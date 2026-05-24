@@ -152,9 +152,12 @@ bb pr review 123 --repo workspace/repo
 동작:
 
 1. Bitbucket Cloud PR diff를 가져옵니다.
-2. bundled `review-ui`에 unified diff를 stdin으로 전달합니다.
-3. 브라우저 기반 diff review workspace를 엽니다.
-4. 기본적으로 agent orchestrator는 꺼진 상태로 실행합니다.
+2. PR title, description, branch 정보, author, URL, changed files summary 같은 가벼운 PR metadata를 가져옵니다.
+3. bundled `review-ui`에 unified diff를 stdin으로 전달합니다.
+4. 브라우저 기반 diff review workspace를 엽니다.
+5. 기본적으로 agent orchestrator는 꺼진 상태로 실행합니다.
+
+agent mode를 켜면 review-ui prompt에는 코멘트가 달린 파일, 선택 라인/범위, 주변 코드, thread history뿐 아니라 이 PR metadata가 `Pull Request Context`로 함께 주입됩니다.
 
 agent ping-pong을 명시적으로 켜려면:
 

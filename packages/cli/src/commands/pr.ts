@@ -49,7 +49,8 @@ export function registerPr(program: Command): void {
       const { client, ref } = await context(options.repo);
       const diff = await fetchPullRequestDiff(client, ref, id);
       if (options.web) {
-        await openReviewUi({ diff, agent: options.agent, mode: options.mode });
+        const metadata = await fetchPullRequestMetadata(client, ref, id).catch(() => undefined);
+        await openReviewUi({ diff, agent: options.agent, mode: options.mode, metadata });
         return;
       }
       process.stdout.write(diff);
@@ -65,7 +66,8 @@ export function registerPr(program: Command): void {
     .action(async (id: string, options: { repo?: string; agent?: boolean; mode: 'split' | 'unified'; clean?: boolean }) => {
       const { client, ref } = await context(options.repo);
       const diff = await fetchPullRequestDiff(client, ref, id);
-      await openReviewUi({ diff, agent: options.agent, mode: options.mode, clean: options.clean });
+      const metadata = await fetchPullRequestMetadata(client, ref, id).catch(() => undefined);
+      await openReviewUi({ diff, agent: options.agent, mode: options.mode, clean: options.clean, metadata });
     });
 
   pr.command('create')
@@ -137,6 +139,51 @@ async function fetchPullRequestDiff(client: BitbucketClient, ref: Awaited<Return
   const diff = await client.requestText(path);
   if (!diff.trim()) throw new CliError(`Pull request #${id} has an empty diff.`);
   return diff;
+}
+
+async function fetchPullRequestMetadata(client: BitbucketClient, ref: Awaited<ReturnType<typeof inferRepoRef>>, id: string): Promise<Record<string, unknown>> {
+  const pr = await client.request(`${repoPath(ref)}/pullrequests/${encodeURIComponent(id)}`);
+  const diffstat = await client.request(`${repoPath(ref)}/pullrequests/${encodeURIComponent(id)}/diffstat?pagelen=100`).catch(() => undefined);
+  return {
+    provider: 'bitbucket',
+    workspace: ref.workspace,
+    repo: ref.repo,
+    prId: id,
+    title: isRecord(pr) && typeof pr.title === 'string' ? pr.title : undefined,
+    description: isRecord(pr) && typeof pr.description === 'string' ? pr.description : undefined,
+    state: isRecord(pr) && typeof pr.state === 'string' ? pr.state : undefined,
+    sourceBranch: isRecord(pr) ? branchName(pr.source) : undefined,
+    destinationBranch: isRecord(pr) ? branchName(pr.destination) : undefined,
+    author: isRecord(pr) ? displayName(pr.author) : undefined,
+    url: htmlUrl(pr),
+    changedFiles: changedFilesFromDiffstat(diffstat),
+  };
+}
+
+function changedFilesFromDiffstat(payload: unknown): Array<Record<string, unknown>> {
+  if (!isRecord(payload) || !Array.isArray(payload.values)) return [];
+  return payload.values.map((entry) => {
+    if (!isRecord(entry)) return {};
+    const oldPath = pathFromDiffstatFile(entry.old);
+    const newPath = pathFromDiffstatFile(entry.new);
+    return {
+      path: newPath ?? oldPath,
+      oldPath,
+      status: typeof entry.status === 'string' ? entry.status : undefined,
+      additions: typeof entry.lines_added === 'number' ? entry.lines_added : undefined,
+      deletions: typeof entry.lines_removed === 'number' ? entry.lines_removed : undefined,
+    };
+  }).filter((entry) => entry.path);
+}
+
+function pathFromDiffstatFile(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return typeof value.path === 'string' ? value.path : undefined;
+}
+
+function htmlUrl(value: unknown): string | undefined {
+  if (!isRecord(value) || !isRecord(value.links) || !isRecord(value.links.html)) return undefined;
+  return typeof value.links.html.href === 'string' ? value.links.html.href : undefined;
 }
 
 function summarizePr(value: unknown): Record<string, unknown> {

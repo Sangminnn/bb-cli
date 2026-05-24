@@ -27,7 +27,7 @@
 
 import { spawn, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
-import { statSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { resolve as resolvePath } from 'path';
 import { setTimeout as delay } from 'timers/promises';
 
@@ -44,6 +44,7 @@ const PI_MODEL = process.env.PI_MODEL || process.env.DIFIT_AGENT_MODEL;
 const CODEX_BIN = process.env.CODEX_BIN || 'codex';
 const CODEX_MODEL = process.env.CODEX_MODEL || process.env.DIFIT_AGENT_MODEL;
 const CUSTOM_AGENT_COMMAND = process.env.DIFIT_AGENT_COMMAND;
+const REVIEW_METADATA = loadReviewMetadata(process.env.BB_REVIEW_METADATA_PATH);
 
 // Neutral cwd avoids project instruction auto-discovery contaminating the run.
 // Provider-specific defaults preserve OAuth/keychain auth while keeping cwd stable.
@@ -317,6 +318,44 @@ function appendAttachmentSection(lines, attachments) {
   }
 }
 
+function loadReviewMetadata(path) {
+  if (!path) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    console.warn(`[orchestrator] failed to load review metadata: ${error.message}`);
+    return null;
+  }
+}
+
+function appendReviewMetadata(lines, metadata) {
+  if (!metadata || typeof metadata !== 'object') return;
+  lines.push('Pull Request Context:');
+  if (metadata.provider) lines.push(`Provider: ${metadata.provider}`);
+  if (metadata.workspace || metadata.repo) lines.push(`Repository: ${metadata.workspace ?? '?'}/${metadata.repo ?? '?'}`);
+  if (metadata.prId) lines.push(`PR: #${metadata.prId}`);
+  if (metadata.title) lines.push(`Title: ${metadata.title}`);
+  if (metadata.description) lines.push(`Description: ${String(metadata.description).replace(/\s+/g, ' ').trim()}`);
+  if (metadata.state) lines.push(`State: ${metadata.state}`);
+  if (metadata.sourceBranch || metadata.destinationBranch) lines.push(`Branches: ${metadata.sourceBranch ?? '?'} -> ${metadata.destinationBranch ?? '?'}`);
+  if (metadata.author) lines.push(`Author: ${metadata.author}`);
+  if (metadata.url) lines.push(`URL: ${metadata.url}`);
+  if (Array.isArray(metadata.changedFiles) && metadata.changedFiles.length > 0) {
+    lines.push('Changed files:');
+    for (const file of metadata.changedFiles.slice(0, 100)) {
+      const path = file?.path ?? '(unknown)';
+      const status = file?.status ? ` ${file.status}` : '';
+      const additions = typeof file?.additions === 'number' ? ` +${file.additions}` : '';
+      const deletions = typeof file?.deletions === 'number' ? ` -${file.deletions}` : '';
+      lines.push(`- ${path}${status}${additions}${deletions}`);
+    }
+    if (metadata.changedFiles.length > 100) {
+      lines.push(`- ... ${metadata.changedFiles.length - 100} more files omitted`);
+    }
+  }
+  lines.push('');
+}
+
 function appendSourceLine(lines, headSha, repositoryPath) {
   if (repositoryPath) {
     lines.push(`Repository root: ${repositoryPath}`);
@@ -334,6 +373,7 @@ function appendSourceLine(lines, headSha, repositoryPath) {
 // so the stdin prompt only carries code context + conversation.
 function buildPromptFull(thread, headSha, attachments, repositoryPath) {
   const lines = [];
+  appendReviewMetadata(lines, REVIEW_METADATA);
   appendSourceLine(lines, headSha, repositoryPath);
   appendCodeContext(lines, thread);
   appendAttachmentSection(lines, attachments);
@@ -362,6 +402,7 @@ function buildPromptDelta(
   const lines = [];
 
   if (isFirstCall) {
+    appendReviewMetadata(lines, REVIEW_METADATA);
     appendSourceLine(lines, headSha, repositoryPath);
     appendCodeContext(lines, thread);
     appendAttachmentSection(lines, attachments);
@@ -619,6 +660,7 @@ function parsePlanResponse(raw) {
 
 function buildPlanPrompt(thread, headSha, attachments, repositoryPath) {
   const lines = [];
+  appendReviewMetadata(lines, REVIEW_METADATA);
   appendSourceLine(lines, headSha, repositoryPath);
   appendCodeContext(lines, thread);
   appendAttachmentSection(lines, attachments);
