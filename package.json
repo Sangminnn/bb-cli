@@ -1,0 +1,17 @@
+{
+  "name": "bb-bitbucket-cli-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bitbucket CLI with a bundled PR review workspace.",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/review-ui && npm run build -w packages/cli",
+    "build:cli": "npm run build -w packages/cli",
+    "build:review-ui": "npm run build -w packages/review-ui",
+    "check": "npm run check -w packages/cli",
+    "test": "npm test -w packages/cli"
+  }
+}
