@@ -41,6 +41,10 @@ export async function openReviewUi(options: ReviewUiOptions): Promise<void> {
 }
 
 function resolveReviewUiEntrypoint(): string {
+  if (process.env.BB_REVIEW_UI_ENTRYPOINT) {
+    return process.env.BB_REVIEW_UI_ENTRYPOINT;
+  }
+
   try {
     const packageJson = require.resolve('@bb-bitbucket-cli/review-ui/package.json');
     return join(dirname(packageJson), 'dist', 'cli', 'index.js');

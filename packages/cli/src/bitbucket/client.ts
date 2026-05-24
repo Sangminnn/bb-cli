@@ -8,15 +8,12 @@ export type RequestOptions = {
 };
 
 export class BitbucketClient {
-  private readonly baseUrl = 'https://api.bitbucket.org/2.0';
+  private readonly baseUrl = (process.env.BB_API_BASE_URL ?? 'https://api.bitbucket.org/2.0').replace(/\/$/, '');
 
   constructor(private readonly credentials: Credentials) {}
 
   async request(path: string, options: RequestOptions = {}): Promise<unknown> {
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const url = normalizedPath.startsWith('/2.0/')
-      ? `https://api.bitbucket.org${normalizedPath}`
-      : `${this.baseUrl}${normalizedPath}`;
+    const url = this.urlFor(path);
 
     const headers: Record<string, string> = {
       Authorization: `Basic ${Buffer.from(`${this.credentials.username}:${this.credentials.appPassword}`).toString('base64')}`,
@@ -48,10 +45,7 @@ export class BitbucketClient {
   }
 
   async requestText(path: string, options: RequestOptions = {}): Promise<string> {
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const url = normalizedPath.startsWith('/2.0/')
-      ? `https://api.bitbucket.org${normalizedPath}`
-      : `${this.baseUrl}${normalizedPath}`;
+    const url = this.urlFor(path);
 
     const response = await fetch(url, {
       method: options.method ?? 'GET',
@@ -69,6 +63,15 @@ export class BitbucketClient {
       throw new CliError(`Bitbucket API error: ${message}`, response.status === 401 ? 2 : 1);
     }
     return text;
+  }
+
+  private urlFor(path: string): string {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    if (normalizedPath.startsWith('/2.0/')) {
+      const origin = this.baseUrl.endsWith('/2.0') ? this.baseUrl.slice(0, -'/2.0'.length) : this.baseUrl;
+      return `${origin}${normalizedPath}`;
+    }
+    return `${this.baseUrl}${normalizedPath}`;
   }
 }
 
