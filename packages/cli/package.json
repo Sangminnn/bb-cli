@@ -1,0 +1,39 @@
+{
+  "name": "bb-bitbucket-cli",
+  "version": "0.1.0",
+  "description": "A GitHub CLI-inspired command line interface for Bitbucket Cloud.",
+  "type": "module",
+  "bin": {
+    "bb": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "dev": "tsx src/cli.ts",
+    "test": "node --test dist/**/*.test.js",
+    "pretest": "npm run build"
+  },
+  "keywords": [
+    "bitbucket",
+    "cli",
+    "pull-request",
+    "github-cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@bb-bitbucket-cli/review-ui": "file:../review-ui",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
