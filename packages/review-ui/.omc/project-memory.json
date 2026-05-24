@@ -1,0 +1,207 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1777906647588,
+  "projectRoot": "/Users/sangminpark/projects/codereview-viewer",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": ">=21.0.0",
+        "confidence": "high",
+        "markers": ["package.json"]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": ["tsconfig.json"]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "express",
+        "version": "5.1.0",
+        "category": "backend"
+      },
+      {
+        "name": "react",
+        "version": "19.1.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.1.0",
+        "category": "frontend"
+      },
+      {
+        "name": "playwright",
+        "version": "1.54.1",
+        "category": "testing"
+      },
+      {
+        "name": "vite",
+        "version": "8.0.0",
+        "category": "build"
+      },
+      {
+        "name": "vitest",
+        "version": "4.0.6",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "pnpm",
+    "runtime": "Node.js 21.0.0"
+  },
+  "build": {
+    "buildCommand": "pnpm build",
+    "testCommand": "pnpm test",
+    "lintCommand": null,
+    "devCommand": "pnpm dev",
+    "scripts": {
+      "dev": "node scripts/dev.js",
+      "dev:site": "pnpm run build:cli && node scripts/export-site-data.js && vite --config vite.config.site.ts --open /",
+      "dev:cli": "tsc --project tsconfig.cli.json && NODE_ENV=development node dist/cli/index.js",
+      "build": "pnpm run build:cli && vite build",
+      "build:site": "pnpm run build:cli && node scripts/export-site-data.js && GITHUB_PAGES=true vite build --config vite.config.site.ts",
+      "build:cli": "tsc --project tsconfig.cli.json",
+      "export:site-data": "node scripts/export-site-data.js",
+      "package:vscode": "pnpm -C packages/vscode run package",
+      "start": "pnpm run build && node dist/cli/index.js",
+      "check": "oxlint . --type-aware --type-check --deny-warnings --report-unused-disable-directives",
+      "check:fix": "oxlint . --type-aware --type-check --deny-warnings --report-unused-disable-directives --fix",
+      "format": "oxfmt --check .",
+      "format:fix": "oxfmt --write .",
+      "knip": "knip --use-tsconfig-files",
+      "test": "vitest run",
+      "test:watch": "vitest",
+      "prepare": "lefthook install",
+      "prepublishOnly": "NODE_ENV=production pnpm run build",
+      "perf": "node scripts/measure-performance.js",
+      "perf:small": "node scripts/measure-performance.js --size small",
+      "perf:medium": "node scripts/measure-performance.js --size medium",
+      "perf:large": "node scripts/measure-performance.js --size large",
+      "perf:xlarge": "node scripts/measure-performance.js --size xlarge",
+      "perf:compare": "node scripts/compare-performance.js"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": true,
+    "workspaces": [],
+    "mainDirectories": ["docs", "public", "scripts", "src"],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dev": {
+      "path": "dev",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1777906647545,
+      "keyFiles": [
+        "dev-lifecycle.d.ts",
+        "dev-lifecycle.js",
+        "dev-lifecycle.test.ts",
+        "dev-stdout.d.ts",
+        "dev-stdout.js"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 0,
+      "lastAccessed": 1777906647545,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1777906647552,
+      "keyFiles": ["structure.md", "test.md"]
+    },
+    "packages": {
+      "path": "packages",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1777906647552,
+      "keyFiles": []
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 3,
+      "lastAccessed": 1777906647553,
+      "keyFiles": ["favicon-white.svg", "favicon.svg", "logo.png"]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 8,
+      "lastAccessed": 1777906647553,
+      "keyFiles": [
+        "compare-performance.js",
+        "dev.js",
+        "export-site-data.js",
+        "generate-large-diff.js",
+        "get-changes-since-tag.sh"
+      ]
+    },
+    "skills": {
+      "path": "skills",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1777906647553,
+      "keyFiles": []
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1777906647553,
+      "keyFiles": []
+    },
+    "dist/types": {
+      "path": "dist/types",
+      "purpose": "Type definitions",
+      "fileCount": 4,
+      "lastAccessed": 1777906647553,
+      "keyFiles": ["diff.d.ts", "diff.js", "watch.d.ts"]
+    },
+    "dist/utils": {
+      "path": "dist/utils",
+      "purpose": "Utility functions",
+      "fileCount": 26,
+      "lastAccessed": 1777906647554,
+      "keyFiles": ["commentFormatting.d.ts", "commentFormatting.js", "commentFormatting.test.d.ts"]
+    },
+    "src/types": {
+      "path": "src/types",
+      "purpose": "Type definitions",
+      "fileCount": 5,
+      "lastAccessed": 1777906647554,
+      "keyFiles": ["css-modules.d.ts", "diff.ts", "prism-components.d.ts"]
+    },
+    "src/utils": {
+      "path": "src/utils",
+      "purpose": "Utility functions",
+      "fileCount": 13,
+      "lastAccessed": 1777906647554,
+      "keyFiles": ["commentFormatting.test.ts", "commentFormatting.ts", "commentImports.test.ts"]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "scripts/export-site-data.js",
+      "accessCount": 2,
+      "lastAccessed": 1777909489955,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}
