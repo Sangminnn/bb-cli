@@ -1,4 +1,4 @@
-# bb-bitbucket-cli
+# bb-cli
 
 Bitbucket Cloud를 GitHub CLI(`gh`)와 비슷한 흐름으로 다루기 위한 TypeScript 기반 CLI입니다.
 
