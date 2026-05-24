@@ -25,25 +25,29 @@
 // not contaminate the review output. OAuth login is preserved (we do NOT use --bare).
 // We add --add-dir <repo> so the model's Read tool can open image attachments.
 
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { statSync } from 'fs';
 import { resolve as resolvePath } from 'path';
 import { setTimeout as delay } from 'timers/promises';
 
 const POLL_INTERVAL_MS = Number(process.env.ORCHESTRATOR_POLL_MS) || 2000;
-const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'opus';
-const REQUEST_TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS) || 5 * 60 * 1000;
-const USE_SESSION_RESUME = process.env.WATCHER_USE_SESSION_RESUME !== 'false';
+const REQUEST_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS ?? process.env.CLAUDE_TIMEOUT_MS) || 5 * 60 * 1000;
 const FILE_WINDOW_LINES = Number(process.env.WATCHER_FILE_WINDOW) || 100;
 const FILE_FULL_BYTES = Number(process.env.WATCHER_FILE_FULL_BYTES) || 8192;
 
-// Neutral cwd avoids project CLAUDE.md auto-discovery contaminating the run.
-// Combined with --system-prompt + --setting-sources "" + --disable-slash-commands
-// + --strict-mcp-config, this isolates the call from the user's global Claude Code
-// instructions (OMC, response-summary hooks, skills) while preserving OAuth login.
-const CLAUDE_CWD = process.env.CLAUDE_CWD || '/tmp';
+const AGENT_PROVIDER_REQUEST = (process.env.DIFIT_AGENT_PROVIDER || 'claude').toLowerCase();
+const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'opus';
+const PI_BIN = process.env.PI_BIN || 'pi';
+const PI_MODEL = process.env.PI_MODEL || process.env.DIFIT_AGENT_MODEL;
+const CODEX_BIN = process.env.CODEX_BIN || 'codex';
+const CODEX_MODEL = process.env.CODEX_MODEL || process.env.DIFIT_AGENT_MODEL;
+const CUSTOM_AGENT_COMMAND = process.env.DIFIT_AGENT_COMMAND;
+
+// Neutral cwd avoids project instruction auto-discovery contaminating the run.
+// Provider-specific defaults preserve OAuth/keychain auth while keeping cwd stable.
+const AGENT_CWD = process.env.AGENT_CWD || process.env.CLAUDE_CWD || '/tmp';
 
 const REVIEWER_SYSTEM_PROMPT = [
   'You are a senior code reviewer responding inside a difit local review session.',
@@ -96,6 +100,9 @@ const PLAN_SYSTEM_PROMPT = [
 const threadSessionMap = new Map();
 
 const apiUrl = (process.env.API_URL || process.argv[2] || '').replace(/\/$/, '');
+const AGENT_PROVIDER = resolveAgentProvider();
+const USE_SESSION_RESUME =
+  process.env.WATCHER_USE_SESSION_RESUME !== 'false' && AGENT_PROVIDER.supportsSessionResume;
 
 if (!apiUrl) {
   console.error(
@@ -393,49 +400,47 @@ function getCurrentMtime(repositoryPath, filePath) {
   }
 }
 
-function runClaude(
-  prompt,
-  { effort, sessionId, addDir, isFirstCall = true, systemPrompt = REVIEWER_SYSTEM_PROMPT } = {},
-) {
+function commandExists(command) {
+  const result = spawnSync(command, ['--version'], { stdio: 'ignore' });
+  return !result.error;
+}
+
+function resolveAgentProvider() {
+  if (AGENT_PROVIDER_REQUEST === 'none' || AGENT_PROVIDER_REQUEST === 'off') {
+    return { name: 'none', supportsSessionResume: false, run: async () => '' };
+  }
+
+  if (AGENT_PROVIDER_REQUEST === 'custom') {
+    if (!CUSTOM_AGENT_COMMAND) {
+      throw new Error('DIFIT_AGENT_COMMAND is required when DIFIT_AGENT_PROVIDER=custom');
+    }
+    return { name: 'custom', supportsSessionResume: false, run: runCustomAgent };
+  }
+
+  if (AGENT_PROVIDER_REQUEST === 'pi') {
+    return { name: 'pi', supportsSessionResume: false, run: runPiAgent };
+  }
+
+  if (AGENT_PROVIDER_REQUEST === 'codex') {
+    return { name: 'codex', supportsSessionResume: false, run: runCodexAgent };
+  }
+
+  if (AGENT_PROVIDER_REQUEST === 'auto') {
+    if (commandExists(PI_BIN)) return { name: 'pi', supportsSessionResume: false, run: runPiAgent };
+    if (commandExists(CLAUDE_BIN)) return { name: 'claude', supportsSessionResume: true, run: runClaudeAgent };
+    if (commandExists(CODEX_BIN)) return { name: 'codex', supportsSessionResume: false, run: runCodexAgent };
+    return { name: 'none', supportsSessionResume: false, run: async () => '' };
+  }
+
+  return { name: 'claude', supportsSessionResume: true, run: runClaudeAgent };
+}
+
+function runAgentProcess(label, command, args, prompt, { cwd = AGENT_CWD } = {}) {
   return new Promise((resolve, reject) => {
-    // Isolation flags:
-    //   --system-prompt              → replace default system prompt (no CLAUDE.md hierarchy injected)
-    //   --setting-sources ""         → skip user/project/local settings
-    //   --strict-mcp-config + empty  → no MCP servers
-    //   --disable-slash-commands     → no skill auto-resolution
-    //   --add-dir <repo>             → grant Read tool access to the repo (for image attachments)
-    // OAuth/keychain auth is preserved (only --bare disables that).
-    const args = [
-      '-p',
-      '--model',
-      CLAUDE_MODEL,
-      '--system-prompt',
-      systemPrompt,
-      '--setting-sources',
-      '',
-      '--strict-mcp-config',
-      '--mcp-config',
-      '{"mcpServers":{}}',
-      '--disable-slash-commands',
-    ];
-    if (addDir) {
-      args.push('--add-dir', addDir);
-    }
-    if (effort) {
-      args.push('--effort', effort);
-    }
-    if (sessionId) {
-      // First call creates a new session; later calls resume the same session.
-      // Reusing --session-id on an existing session triggers "already in use" error.
-      if (isFirstCall) {
-        args.push('--session-id', sessionId);
-      } else {
-        args.push('--resume', sessionId);
-      }
-    }
-    const child = spawn(CLAUDE_BIN, args, {
+    const child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: CLAUDE_CWD,
+      cwd,
+      env: process.env,
     });
 
     let stdout = '';
@@ -446,7 +451,7 @@ function runClaude(
       if (settled) return;
       settled = true;
       child.kill('SIGTERM');
-      reject(new Error(`claude timed out after ${REQUEST_TIMEOUT_MS}ms`));
+      reject(new Error(`${label} timed out after ${REQUEST_TIMEOUT_MS}ms`));
     }, REQUEST_TIMEOUT_MS);
 
     child.stdout.on('data', (chunk) => {
@@ -466,7 +471,7 @@ function runClaude(
       settled = true;
       clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`claude exited with ${code}: ${stderr.trim()}`));
+        reject(new Error(`${label} exited with ${code}: ${stderr.trim()}`));
         return;
       }
       resolve(stdout.trim());
@@ -475,6 +480,79 @@ function runClaude(
     child.stdin.write(prompt);
     child.stdin.end();
   });
+}
+
+function runClaudeAgent(
+  prompt,
+  { effort, sessionId, addDir, isFirstCall = true, systemPrompt = REVIEWER_SYSTEM_PROMPT } = {},
+) {
+  // Isolation flags:
+  //   --system-prompt              → replace default system prompt (no CLAUDE.md hierarchy injected)
+  //   --setting-sources ""         → skip user/project/local settings
+  //   --strict-mcp-config + empty  → no MCP servers
+  //   --disable-slash-commands     → no skill auto-resolution
+  //   --add-dir <repo>             → grant Read tool access to the repo (for image attachments)
+  // OAuth/keychain auth is preserved (only --bare disables that).
+  const args = [
+    '-p',
+    '--model',
+    CLAUDE_MODEL,
+    '--system-prompt',
+    systemPrompt,
+    '--setting-sources',
+    '',
+    '--strict-mcp-config',
+    '--mcp-config',
+    '{"mcpServers":{}}',
+    '--disable-slash-commands',
+  ];
+  if (addDir) {
+    args.push('--add-dir', addDir);
+  }
+  if (effort) {
+    args.push('--effort', effort);
+  }
+  if (sessionId) {
+    // First call creates a new session; later calls resume the same session.
+    // Reusing --session-id on an existing session triggers "already in use" error.
+    if (isFirstCall) {
+      args.push('--session-id', sessionId);
+    } else {
+      args.push('--resume', sessionId);
+    }
+  }
+  return runAgentProcess('claude', CLAUDE_BIN, args, prompt);
+}
+
+function runPiAgent(prompt, { systemPrompt = REVIEWER_SYSTEM_PROMPT } = {}) {
+  const args = [
+    '-p',
+    '--no-session',
+    '--no-tools',
+    '--no-extensions',
+    '--no-skills',
+    '--no-prompt-templates',
+    '--no-context-files',
+    '--system-prompt',
+    systemPrompt,
+  ];
+  if (PI_MODEL) {
+    args.push('--model', PI_MODEL);
+  }
+  return runAgentProcess('pi', PI_BIN, args, prompt);
+}
+
+function runCodexAgent(prompt, { systemPrompt = REVIEWER_SYSTEM_PROMPT } = {}) {
+  const args = ['exec', '--skip-git-repo-check'];
+  if (CODEX_MODEL) {
+    args.push('--model', CODEX_MODEL);
+  }
+  args.push(`${systemPrompt}\n\n${prompt}`);
+  return runAgentProcess('codex', CODEX_BIN, args, '');
+}
+
+function runCustomAgent(prompt) {
+  return runAgentProcess('custom-agent', CUSTOM_AGENT_COMMAND, [], prompt);
 }
 
 async function postReply(threadId, body) {
@@ -593,7 +671,7 @@ async function handlePending(thread, sharedContext) {
     const startTime = Date.now();
     try {
       const prompt = buildPlanPrompt(thread, headSha, attachments, repositoryPath);
-      const raw = await runClaude(prompt, {
+      const raw = await AGENT_PROVIDER.run(prompt, {
         effort,
         sessionId: randomUUID(),
         addDir: repositoryPath,
@@ -706,11 +784,12 @@ async function handlePending(thread, sharedContext) {
       prompt = buildPromptFull(thread, headSha, attachments, repositoryPath);
     }
 
-    const reply = await runClaude(prompt, {
+    const reply = await AGENT_PROVIDER.run(prompt, {
       effort,
       sessionId,
       addDir: repositoryPath,
       isFirstCall,
+      systemPrompt: REVIEWER_SYSTEM_PROMPT,
     });
     const elapsedMs = Date.now() - startTime;
 
@@ -743,7 +822,7 @@ async function handlePending(thread, sharedContext) {
 
 async function main() {
   console.log(
-    `[orchestrator] watching ${apiUrl} every ${POLL_INTERVAL_MS}ms (model=${CLAUDE_MODEL}, mode=${USE_SESSION_RESUME ? 'session' : 'full'}, window=${FILE_WINDOW_LINES})`,
+    `[orchestrator] watching ${apiUrl} every ${POLL_INTERVAL_MS}ms (provider=${AGENT_PROVIDER.name}, mode=${USE_SESSION_RESUME ? 'session' : 'full'}, window=${FILE_WINDOW_LINES})`,
   );
   while (!stopped) {
     try {

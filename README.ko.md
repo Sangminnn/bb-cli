@@ -162,6 +162,48 @@ agent ping-pong을 명시적으로 켜려면:
 bb pr review 123 --repo workspace/repo --agent
 ```
 
+### Agent Provider
+
+review-ui orchestrator는 이제 Claude Code에 하드코딩되지 않고 provider 계층을 통해 agent를 실행합니다.
+
+```bash
+DIFIT_AGENT_PROVIDER=claude # 기본값, 기존 동작 유지
+DIFIT_AGENT_PROVIDER=pi
+DIFIT_AGENT_PROVIDER=codex
+DIFIT_AGENT_PROVIDER=auto
+DIFIT_AGENT_PROVIDER=custom
+DIFIT_AGENT_PROVIDER=none
+```
+
+provider별 주요 환경변수:
+
+```bash
+# Claude Code 호환 provider
+CLAUDE_BIN=claude
+CLAUDE_MODEL=opus
+
+# pi provider
+PI_BIN=pi
+PI_MODEL=openai/gpt-4o
+
+# Codex provider
+CODEX_BIN=codex
+CODEX_MODEL=gpt-5.1-codex
+
+# stdin/stdout 기반 custom agent command
+DIFIT_AGENT_PROVIDER=custom
+DIFIT_AGENT_COMMAND=/path/to/agent-command
+```
+
+동작 방식:
+
+- `claude`: Claude Code print mode를 사용하며 session resume을 지원합니다.
+- `pi`: `pi -p`를 no-session/full-history 방식으로 사용합니다.
+- `codex`: `codex exec`를 full-history 방식으로 사용합니다.
+- `custom`: stdin/stdout 기반 명령을 실행합니다.
+- `auto`: 사용 가능한 provider를 `pi`, `claude`, `codex` 순서로 선택합니다.
+- `none`: agent 응답을 비활성화합니다.
+
 ## GitHub CLI 스타일 매핑
 
 | GitHub CLI | bb CLI |

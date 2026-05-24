@@ -170,6 +170,48 @@ Enable agent-assisted discussion explicitly:
 bb pr review 123 --repo workspace/repo --agent
 ```
 
+### Agent Providers
+
+The review UI orchestrator now uses a provider layer instead of being hard-wired to Claude Code.
+
+```bash
+DIFIT_AGENT_PROVIDER=claude # default, backward-compatible
+DIFIT_AGENT_PROVIDER=pi
+DIFIT_AGENT_PROVIDER=codex
+DIFIT_AGENT_PROVIDER=auto
+DIFIT_AGENT_PROVIDER=custom
+DIFIT_AGENT_PROVIDER=none
+```
+
+Useful provider-specific environment variables:
+
+```bash
+# Claude Code-compatible provider
+CLAUDE_BIN=claude
+CLAUDE_MODEL=opus
+
+# pi provider
+PI_BIN=pi
+PI_MODEL=openai/gpt-4o
+
+# Codex provider
+CODEX_BIN=codex
+CODEX_MODEL=gpt-5.1-codex
+
+# Custom stdin/stdout agent command
+DIFIT_AGENT_PROVIDER=custom
+DIFIT_AGENT_COMMAND=/path/to/agent-command
+```
+
+Provider behavior:
+
+- `claude`: uses Claude Code print mode with session resume support.
+- `pi`: uses `pi -p` in no-session/full-history mode.
+- `codex`: uses `codex exec` in full-history mode.
+- `custom`: executes a stdin/stdout command.
+- `auto`: picks the first available provider from `pi`, `claude`, `codex`.
+- `none`: disables agent replies.
+
 ## GitHub CLI Mapping
 
 | GitHub CLI | bb CLI |
